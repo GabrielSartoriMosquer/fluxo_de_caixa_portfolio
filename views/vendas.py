@@ -25,7 +25,11 @@ def render_view():
         df_p = st.session_state['produtos']
         
         # Dicionários para lookup
-        cli_opts = dict(zip(df_c['id'], df_c['nome'])) if not df_c.empty else {}
+        # --- ALTERAÇÃO 1: Adiciona opção de venda sem cadastro ---
+        cli_opts = {None: "👤 Consumidor Final (Sem Cadastro)"}
+        if not df_c.empty:
+            cli_opts.update(dict(zip(df_c['id'], df_c['nome'])))
+        
         prod_opts = dict(zip(df_p['id'], df_p['nome'])) if not df_p.empty else {}
         
         # Layout de colunas
@@ -35,11 +39,7 @@ def render_view():
         c_date = col_data.date_input("Data", datetime.now())
         
         # Seleção de Cliente
-        if not cli_opts:
-            c_cli.warning("Cadastre clientes!")
-            cli_id = None
-        else:
-            cli_id = c_cli.selectbox("Cliente", list(cli_opts.keys()), format_func=lambda x: cli_opts[x])
+        cli_id = c_cli.selectbox("Cliente", list(cli_opts.keys()), format_func=lambda x: cli_opts[x])
         
         # Seleção de Produto
         if not prod_opts: 
@@ -97,7 +97,8 @@ def render_view():
         
         # Botão de Envio
         if st.form_submit_button("✅ Finalizar Venda", disabled=not pode_vender):
-            if cli_id and prod_id and pode_vender:
+            # --- ALTERAÇÃO 2: Remove a exigência de cli_id ---
+            if prod_id and pode_vender:
                 try:
                     # --- DOUBLE CHECK DE ESTOQUE (CRÍTICO) ---
                     # Busca o estoque em tempo real no banco antes de confirmar
@@ -111,14 +112,20 @@ def render_view():
                     # Combina a data selecionada com a hora atual
                     data_final = datetime.combine(c_date, datetime.now().time())
                     
-                    # 1. Insere a transação (cabeçalho da venda)
-                    res_t = db.insert('transacoes', {
-                        'id_cliente': int(cli_id), 
+                    # --- ALTERAÇÃO 3: Prepara o payload permitindo id_cliente nulo ---
+                    payload_transacao = {
                         'valor_total': valor, 
                         'pagamento': pgto, 
                         'origem': 'Balcão',
                         'data_transacao': str(data_final)
-                    })
+                    }
+                    if cli_id is not None:
+                        payload_transacao['id_cliente'] = int(cli_id)
+                    else:
+                         payload_transacao['id_cliente'] = None
+
+                    # 1. Insere a transação (cabeçalho da venda)
+                    res_t = db.insert('transacoes', payload_transacao)
                     
                     # 2. Se a transação foi criada, insere o item e atualiza o estoque
                     if res_t.data:
@@ -137,7 +144,7 @@ def render_view():
                         db.update('produtos', {'estoque': novo_estoque}, prod_id)
                         
                         # --- GERAÇÃO DE RECIBO ---
-                        nome_cliente = cli_opts.get(cli_id, "Cliente")
+                        nome_cliente = cli_opts.get(cli_id, "Consumidor Final")
                         recibo = f"""
                         ================================
                              FARMÁCIA DAS IRMÃS
