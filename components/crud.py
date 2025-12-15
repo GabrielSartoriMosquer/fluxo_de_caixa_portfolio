@@ -53,12 +53,19 @@ def render_generic_crud(table_name: str, title: str, fields: list, df_current: p
                         st.error(f"Erro de validação: {custom_error}")
                     else:
                         try:
-                            # Remove chaves de controle que não vão pro banco
-                            clean_payload = {k: v for k, v in payload.items() if k in [f['name'] for f in fields]}
+                            clean_payload = {}
+                            for k, v in payload.items():
+                                # Verifica se o campo existe na lista de fields
+                                field_config = next((f for f in fields if f['name'] == k), None)
+                                if field_config:
+                                    # Se for estoque ou quantidade, força conversão para int
+                                    if k in ['estoque', 'quantidade', 'duracao_estimada']:
+                                        clean_payload[k] = int(v)
+                                    else:
+                                        clean_payload[k] = v
+
                             db.insert(table_name, clean_payload)
                             st.success("Adicionado com sucesso!")
-                            st.session_state['refresh'] = True
-                            st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao criar: {e}")
 

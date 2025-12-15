@@ -18,7 +18,7 @@ def validate_phone(phone):
 
 def render_view():
     st.title("📝 Meus Cadastros")
-    st.write("Aqui a senhora pode adicionar ou mudar informações.")
+    st.write("Aqui você pode adicionar ou editar informações.")
 
     tab_cli, tab_prod, tab_serv, tab_eq = st.tabs(["👥 Pessoas", "📦 Produtos", "🛠️ Serviços", "👩‍⚕️ Equipe"])
 
@@ -35,7 +35,7 @@ def render_view():
             {'name': 'nome', 'label': 'Nome do Produto', 'type': 'text', 'required': True},
             {'name': 'tipo', 'label': 'Tipo (ex: Chá, Óleo)', 'type': 'text'},
             {'name': 'valor_original', 'label': 'Preço (R$)', 'type': 'number', 'step': 0.01},
-            {'name': 'estoque', 'label': 'Quantidade em Estoque', 'type': 'number', 'step': 1.0, 'min': 0.0}
+            {'name': 'estoque', 'label': 'Quantidade em Estoque', 'type': 'number', 'step': 1, 'min': 0}
         ]
         render_generic_crud('produtos', 'Produto', fields, st.session_state['produtos'])
 
