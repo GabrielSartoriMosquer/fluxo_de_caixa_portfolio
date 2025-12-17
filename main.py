@@ -3,7 +3,7 @@ from utils.session import init_session_state, refresh_data
 import time
 
 # 1. Configuração da Página (Obrigatório ser a primeira linha executável do Streamlit)
-st.set_page_config(page_title="Farmácia das Irmãs", page_icon="🌿", layout="wide")
+st.set_page_config(page_title="Fluxo de Caixa - Farmácia", page_icon="🌿", layout="wide")
 
 # Função de autenticação
 def check_password():
@@ -11,7 +11,7 @@ def check_password():
         st.session_state['logged_in'] = False
 
     if not st.session_state['logged_in']:
-        st.title("🔐 Acesso Restrito - Farmácia das Irmãs")
+        st.title("🔐 Acesso Restrito - Farmácia")
         senha = st.text_input("Digite a senha de acesso", type="password")
         
         if st.button("Entrar"):
