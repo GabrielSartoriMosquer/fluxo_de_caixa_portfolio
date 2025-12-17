@@ -32,8 +32,7 @@ def render_view():
         mes_atual = datetime.now().month
         novos_clientes = len(df_cli[df_cli['created_at'].dt.month == mes_atual])
 
-    # --- 3. EXIBIÇÃO DOS KPIS (LINHA DO TOPO) ---
-    # Container para destacar os números principais
+    # --- 3. EXIBIÇÃO DOS KPIS ---
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("💰 Faturamento Total", f"R$ {faturamento_total:,.2f}")
     c2.metric("🎫 Ticket Médio", f"R$ {ticket_medio:,.2f}")
@@ -48,7 +47,6 @@ def render_view():
     with col_g1:
         st.subheader("📈 Evolução de Vendas")
         if not df_trans.empty:
-            # Agrupa por SEMANA ('W') para evitar gráfico esburacado
             vendas_tempo = df_trans.set_index('data_transacao').resample('W')['valor_total'].sum().reset_index()
             
             fig_evolucao = px.area(
@@ -57,7 +55,7 @@ def render_view():
                 y='valor_total',
                 title="Faturamento Semanal",
                 labels={'data_transacao': 'Período', 'valor_total': 'Faturamento (R$)'},
-                color_discrete_sequence=['#00B4D8'] # Azul moderno
+                color_discrete_sequence=['#00B4D8']
             )
             fig_evolucao.update_layout(hovermode="x unified")
             st.plotly_chart(fig_evolucao, use_container_width=True)
@@ -70,12 +68,11 @@ def render_view():
             pagamentos = df_trans['pagamento'].value_counts().reset_index()
             pagamentos.columns = ['Meio', 'Qtd']
             
-            # CORREÇÃO DO ERRO: Usamos px.pie com o parâmetro 'hole' para fazer o donut
             fig_pizza = px.pie(
                 pagamentos, 
                 values='Qtd', 
                 names='Meio', 
-                hole=0.5, # Isso transforma a pizza em rosca
+                hole=0.5,
                 color_discrete_sequence=px.colors.sequential.RdBu
             )
             fig_pizza.update_traces(textposition='inside', textinfo='percent+label')
@@ -88,7 +85,7 @@ def render_view():
     col_g3, col_g4 = st.columns(2)
 
     with col_g3:
-        st.subheader("💇‍♀️ Top Serviços")
+        st.subheader("🏆 Serviços Mais Agendados")
         if not df_ag.empty:
             top_serv = df_ag['Serviço'].value_counts().head(5).reset_index()
             top_serv.columns = ['Serviço', 'Agendamentos']
@@ -100,7 +97,7 @@ def render_view():
                 orientation='h',
                 text='Agendamentos',
                 color='Agendamentos',
-                color_continuous_scale='Blues_r'
+                color_continuous_scale='Blues'
             )
             fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig_bar, use_container_width=True)
@@ -108,7 +105,7 @@ def render_view():
             st.info("Agenda vazia.")
 
     with col_g4:
-        st.subheader("🏆 Ranking Equipe")
+        st.subheader("👥 Carga de Atendimentos")
         if not df_ag.empty:
             rank = df_ag[df_ag['status'] == 'Concluído']['Profissional'].value_counts().reset_index()
             rank.columns = ['Profissional', 'Atendimentos']

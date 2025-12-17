@@ -39,7 +39,7 @@ def render_view():
                 next_one = futuros.iloc[0]
                 proximo = f"{next_one['horario']} - {next_one['Cliente']}"
             else:
-                proximo = "Agenda finalizada por hoje"
+                proximo = "Agenda finalizada"
         except:
             proximo = "-"
             
