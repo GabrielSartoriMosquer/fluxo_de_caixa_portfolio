@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime
 
 def render_view():
@@ -9,14 +8,12 @@ def render_view():
     st.write("Visão geral de performance, financeiro e operacional.")
 
     # 1. CARREGAMENTO E PREPARAÇÃO DE DADOS
-    # Recuperamos os DataFrames da sessão
+    # Recuperamos os DataFrames da sessão com segurança
     df_trans = st.session_state.get('transacoes', pd.DataFrame())
     df_cli = st.session_state.get('clientes', pd.DataFrame())
     df_ag = st.session_state.get('agendamentos', pd.DataFrame())
-    df_prod = st.session_state.get('produtos', pd.DataFrame())
-    df_atend = st.session_state.get('atendentes', pd.DataFrame())
-
-    # Tratamento de datas
+    
+    # Garantir tipos de data
     if not df_trans.empty and 'data_transacao' in df_trans.columns:
         df_trans['data_transacao'] = pd.to_datetime(df_trans['data_transacao'])
     
@@ -36,11 +33,12 @@ def render_view():
         novos_clientes = len(df_cli[df_cli['created_at'].dt.month == mes_atual])
 
     # --- 3. EXIBIÇÃO DOS KPIS (LINHA DO TOPO) ---
+    # Container para destacar os números principais
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("💰 Faturamento Total", f"R$ {faturamento_total:,.2f}")
     c2.metric("🎫 Ticket Médio", f"R$ {ticket_medio:,.2f}")
     c3.metric("🛒 Total de Vendas", qtd_vendas)
-    c4.metric("👥 Novos Clientes (Mês)", novos_clientes, delta_color="normal")
+    c4.metric("👥 Novos Clientes (Mês)", novos_clientes)
 
     st.divider()
 
@@ -50,8 +48,7 @@ def render_view():
     with col_g1:
         st.subheader("📈 Evolução de Vendas")
         if not df_trans.empty:
-            # Agrupa por Mês ou Semana para evitar gráfico "esburacado"
-            # Vamos usar resampling semanal para suavizar
+            # Agrupa por SEMANA ('W') para evitar gráfico esburacado
             vendas_tempo = df_trans.set_index('data_transacao').resample('W')['valor_total'].sum().reset_index()
             
             fig_evolucao = px.area(
@@ -73,13 +70,15 @@ def render_view():
             pagamentos = df_trans['pagamento'].value_counts().reset_index()
             pagamentos.columns = ['Meio', 'Qtd']
             
-            fig_pizza = px.donut(
+            # CORREÇÃO DO ERRO: Usamos px.pie com o parâmetro 'hole' para fazer o donut
+            fig_pizza = px.pie(
                 pagamentos, 
                 values='Qtd', 
                 names='Meio', 
-                hole=0.4,
+                hole=0.5, # Isso transforma a pizza em rosca
                 color_discrete_sequence=px.colors.sequential.RdBu
             )
+            fig_pizza.update_traces(textposition='inside', textinfo='percent+label')
             fig_pizza.update_layout(showlegend=False)
             st.plotly_chart(fig_pizza, use_container_width=True)
         else:
@@ -91,7 +90,6 @@ def render_view():
     with col_g3:
         st.subheader("💇‍♀️ Top Serviços")
         if not df_ag.empty:
-            # Agrupamento por serviço
             top_serv = df_ag['Serviço'].value_counts().head(5).reset_index()
             top_serv.columns = ['Serviço', 'Agendamentos']
             
@@ -101,8 +99,7 @@ def render_view():
                 y='Serviço', 
                 orientation='h',
                 text='Agendamentos',
-                color='Agendamentos',
-                color_continuous_scale='Bluyl'
+                color='Agendamentos'
             )
             fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig_bar, use_container_width=True)
@@ -110,14 +107,14 @@ def render_view():
             st.info("Agenda vazia.")
 
     with col_g4:
-        st.subheader("🏆 Ranking Equipe (Vendas)")
-        # Precisamos cruzar Agendamentos (que tem atendente) com preços ou usar dados manuais
-        # Vamos usar contagem de atendimentos concluídos por enquanto como proxy de performance
+        st.subheader("🏆 Ranking Equipe")
         if not df_ag.empty:
+            # Conta atendimentos concluídos por profissional
             rank = df_ag[df_ag['status'] == 'Concluído']['Profissional'].value_counts().reset_index()
             rank.columns = ['Profissional', 'Atendimentos']
             
             if not rank.empty:
+                # Tabela estilizada com barra de progresso
                 st.dataframe(
                     rank,
                     column_config={
@@ -125,7 +122,7 @@ def render_view():
                             "Performance",
                             format="%d",
                             min_value=0,
-                            max_value=int(rank['Atendimentos'].max() * 1.2),
+                            max_value=int(rank['Atendimentos'].max() * 1.2), # Escala dinâmica
                         ),
                     },
                     use_container_width=True,
@@ -138,29 +135,26 @@ def render_view():
 
     st.divider()
 
-    # --- 6. TABELA DETALHADA COM BADGES E AVATARES ---
+    # --- 6. TABELA DETALHADA ---
     st.subheader("📑 Histórico Recente de Transações")
     
     if not df_trans.empty:
-        # Prepara a tabela para exibição (Merge com Clientes para mostrar nomes)
         df_display = df_trans.copy()
         
-        # Merge manual simples via Pandas
+        # Merge simples para pegar nome do cliente
         if not df_cli.empty:
             df_display['id_cliente'] = df_display['id_cliente'].fillna(0).astype(int)
             df_cli['id'] = df_cli['id'].astype(int)
-            
-            # Cria dicionário para mapear ID -> Nome
             mapa_nomes = df_cli.set_index('id')['nome'].to_dict()
             df_display['Cliente'] = df_display['id_cliente'].map(mapa_nomes).fillna("Consumidor Final")
         else:
             df_display['Cliente'] = "Consumidor Final"
 
-        # Seleciona e renomeia colunas
+        # Seleciona colunas finais
         df_final = df_display[['data_transacao', 'Cliente', 'valor_total', 'pagamento', 'origem']].copy()
         df_final = df_final.sort_values('data_transacao', ascending=False)
         
-        # Configuração visual avançada (Column Config)
+        # Configuração visual avançada da tabela
         st.dataframe(
             df_final,
             column_config={
@@ -175,12 +169,13 @@ def render_view():
                 "pagamento": st.column_config.TextColumn(
                     "Pagamento",
                     help="Método utilizado",
-                    validate="^(Pix|Dinheiro|Cartão|Boleto)$"
+                    validate="^(Pix|Dinheiro|Cartão|Boleto)$" # Validação visual opcional
                 ),
                 "origem": st.column_config.SelectboxColumn(
                     "Origem",
                     options=["Balcão", "Agendamento"],
-                    width="small"
+                    width="small",
+                    disabled=True
                 )
             },
             hide_index=True,
