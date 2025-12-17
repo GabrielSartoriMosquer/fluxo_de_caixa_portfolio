@@ -147,7 +147,7 @@ def render_view():
                         nome_cliente = cli_opts.get(cli_id, "Consumidor Final")
                         recibo = f"""
                         ================================
-                             FARMÁCIA DAS IRMÃS
+                                   FARMÁCIA 
                         ================================
                         Data: {data_final.strftime('%d/%m/%Y %H:%M')}
                         Cliente: {nome_cliente}
