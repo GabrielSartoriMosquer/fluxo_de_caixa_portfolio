@@ -1,22 +1,72 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+from datetime import datetime
 
 def render_view():
-    st.title("🏠 Bem-vinda à Farmácia!")
-    st.write("Aqui está um resumo do dia.")
+    st.title("🏠 Olá, Bem-vinda!")
+    st.write(f"Resumo de hoje: **{datetime.now().strftime('%d/%m/%Y')}**")
     
-    df_t = st.session_state['transacoes']
+    # Dados da Sessão
+    df_ag = st.session_state.get('agendamentos', pd.DataFrame())
+    df_trans = st.session_state.get('transacoes', pd.DataFrame())
     
-    if not df_t.empty and 'valor_total' in df_t.columns:
-        total = df_t['valor_total'].sum()
-        col1, col2 = st.columns(2)
-        col1.metric("Dinheiro que entrou", f"R$ {total:.2f}")
-        col2.metric("Horários Marcados", len(st.session_state['agendamentos']))
+    # Filtra dados de HOJE
+    hoje_str = datetime.now().strftime('%Y-%m-%d')
+    
+    vendas_hoje = 0.0
+    if not df_trans.empty and 'data_transacao' in df_trans.columns:
+        # Converter para datetime se necessário e filtrar
+        mask = pd.to_datetime(df_trans['data_transacao']).dt.strftime('%Y-%m-%d') == hoje_str
+        vendas_hoje = df_trans[mask]['valor_total'].sum()
+
+    agendamentos_hoje = pd.DataFrame()
+    if not df_ag.empty and 'data_agendamento' in df_ag.columns:
+        agendamentos_hoje = df_ag[df_ag['data_agendamento'] == hoje_str]
+
+    # --- METRÍCAS DO DIA (BIG NUMBERS) ---
+    col1, col2, col3 = st.columns(3)
+    
+    col1.metric("Caixa do Dia", f"R$ {vendas_hoje:.2f}")
+    col2.metric("Agendamentos Hoje", len(agendamentos_hoje))
+    
+    # Próximo cliente
+    proximo = "Ninguém"
+    if not agendamentos_hoje.empty:
+        # Filtra horários futuros
+        agora = datetime.now().time()
+        # Assumindo formato HH:mm:ss
+        try:
+            agendamentos_hoje['obj_time'] = pd.to_datetime(agendamentos_hoje['horario'], format='%H:%M:%S').dt.time
+            futuros = agendamentos_hoje[agendamentos_hoje['obj_time'] > agora].sort_values('obj_time')
+            if not futuros.empty:
+                next_one = futuros.iloc[0]
+                proximo = f"{next_one['horario']} - {next_one['Cliente']}"
+            else:
+                proximo = "Agenda finalizada"
+        except:
+            proximo = "Erro formato hora"
+            
+    col3.metric("Próximo Cliente", proximo)
+
+    st.divider()
+
+    # --- VISUALIZAÇÃO DA AGENDA DE HOJE (SIMPLIFICADA) ---
+    st.subheader("📅 Sua Agenda Hoje")
+    
+    if not agendamentos_hoje.empty:
+        # Seleciona colunas relevantes
+        df_show = agendamentos_hoje[['horario', 'Cliente', 'Serviço', 'Profissional', 'status']].copy()
+        df_show = df_show.sort_values('horario')
         
-        if 'data_transacao' in df_t.columns:
-            df_t['data_transacao'] = pd.to_datetime(df_t['data_transacao'])
-            daily = df_t.groupby('data_transacao')['valor_total'].sum().reset_index()
-            st.plotly_chart(px.bar(daily, x='data_transacao', y='valor_total', title="Vendas por Dia"), use_container_width=True)
+        # Exibe com estilo condicional para status
+        def highlight_status(val):
+            color = '#c8e6c9' if val == 'Concluído' else '#ffcdd2' if val == 'Cancelado' else '#fff9c4'
+            return f'background-color: {color}'
+
+        st.dataframe(
+            df_show.style.applymap(highlight_status, subset=['status']),
+            use_container_width=True,
+            hide_index=True
+        )
     else:
-        st.info("Ainda não há dados suficientes para o resumo.")
+        st.success("🎉 Agenda livre por hoje! Aproveite para repor estoque ou organizar a loja.")

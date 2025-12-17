@@ -1,120 +1,190 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime, time
+import plotly.graph_objects as go
+from datetime import datetime
 
 def render_view():
-    st.title("🔍 Visualização Geral")
-    st.write("Veja tudo o que está acontecendo na farmácia.")
+    st.title("📊 Dashboard Estratégico")
+    st.write("Visão geral de performance, financeiro e operacional.")
 
-    tab_est, tab_vend, tab_ag, tab_func, tab_livre = st.tabs(["📦 Estoque", "💰 Vendas", "📅 Agenda", "👥 Equipe", "🆓 Horários Livres"])
+    # 1. CARREGAMENTO E PREPARAÇÃO DE DADOS
+    # Recuperamos os DataFrames da sessão
+    df_trans = st.session_state.get('transacoes', pd.DataFrame())
+    df_cli = st.session_state.get('clientes', pd.DataFrame())
+    df_ag = st.session_state.get('agendamentos', pd.DataFrame())
+    df_prod = st.session_state.get('produtos', pd.DataFrame())
+    df_atend = st.session_state.get('atendentes', pd.DataFrame())
 
-    # --- ABA ESTOQUE ---
-    with tab_est:
-        st.subheader("📦 Estoque Atual")
-        df_prod = st.session_state['produtos']
-        if not df_prod.empty:
-            df_show = df_prod[['nome', 'tipo', 'valor_original', 'estoque']].copy()
-            df_show.columns = ['Produto', 'Tipo', 'Preço (R$)', 'Qtd.']
-            st.dataframe(df_show, use_container_width=True, hide_index=True)
-            
-            baixo = df_prod[df_prod['estoque'] < 5]
-            if not baixo.empty:
-                st.error(f"⚠️ Atenção! Produtos com pouco estoque: {', '.join(baixo['nome'].tolist())}")
-        else:
-            st.info("Nenhum produto cadastrado.")
+    # Tratamento de datas
+    if not df_trans.empty and 'data_transacao' in df_trans.columns:
+        df_trans['data_transacao'] = pd.to_datetime(df_trans['data_transacao'])
+    
+    if not df_ag.empty and 'data_agendamento' in df_ag.columns:
+        df_ag['data_agendamento'] = pd.to_datetime(df_ag['data_agendamento'])
 
-    # --- ABA VENDAS ---
-    with tab_vend:
-        st.subheader("💰 Histórico de Vendas")
-        df_trans = st.session_state['transacoes']
+    # --- 2. CÁLCULO DE KPIS (INDICADORES) ---
+    faturamento_total = df_trans['valor_total'].sum() if not df_trans.empty else 0.0
+    qtd_vendas = len(df_trans)
+    ticket_medio = (faturamento_total / qtd_vendas) if qtd_vendas > 0 else 0.0
+    
+    # Cálculo de novos clientes (mês atual)
+    novos_clientes = 0
+    if not df_cli.empty and 'created_at' in df_cli.columns:
+        df_cli['created_at'] = pd.to_datetime(df_cli['created_at'])
+        mes_atual = datetime.now().month
+        novos_clientes = len(df_cli[df_cli['created_at'].dt.month == mes_atual])
+
+    # --- 3. EXIBIÇÃO DOS KPIS (LINHA DO TOPO) ---
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("💰 Faturamento Total", f"R$ {faturamento_total:,.2f}")
+    c2.metric("🎫 Ticket Médio", f"R$ {ticket_medio:,.2f}")
+    c3.metric("🛒 Total de Vendas", qtd_vendas)
+    c4.metric("👥 Novos Clientes (Mês)", novos_clientes, delta_color="normal")
+
+    st.divider()
+
+    # --- 4. GRÁFICOS PRINCIPAIS ---
+    col_g1, col_g2 = st.columns([2, 1])
+
+    with col_g1:
+        st.subheader("📈 Evolução de Vendas")
         if not df_trans.empty:
-            df_show = df_trans.copy()
-            if 'data_transacao' in df_show.columns:
-                df_show['Data'] = pd.to_datetime(df_show['data_transacao']).dt.strftime('%d/%m/%Y')
+            # Agrupa por Mês ou Semana para evitar gráfico "esburacado"
+            # Vamos usar resampling semanal para suavizar
+            vendas_tempo = df_trans.set_index('data_transacao').resample('W')['valor_total'].sum().reset_index()
             
-            cols_map = {'Data': 'Data', 'valor_total': 'Valor (R$)', 'pagamento': 'Pagamento', 'origem': 'Origem'}
-            cols_final = [c for c in cols_map.keys() if c in df_show.columns or c == 'Data']
-            
-            df_final = df_show[cols_final].rename(columns=cols_map)
-            st.dataframe(df_final, use_container_width=True, hide_index=True)
-            
-            st.divider()
-            
-            # Gráfico Financeiro (Movido da Agenda para cá)
-            if 'valor_total' in df_trans.columns:
-                total = df_trans['valor_total'].sum()
-                st.metric("Total Vendido (Geral)", f"R$ {total:.2f}")
-                
-                if 'data_transacao' in df_trans.columns:
-                    df_chart = df_trans.copy()
-                    df_chart['data_transacao'] = pd.to_datetime(df_chart['data_transacao'])
-                    daily = df_chart.groupby('data_transacao')['valor_total'].sum().reset_index()
-                    st.plotly_chart(px.bar(daily, x='data_transacao', y='valor_total', title="Vendas por Dia"), use_container_width=True)
+            fig_evolucao = px.area(
+                vendas_tempo, 
+                x='data_transacao', 
+                y='valor_total',
+                title="Faturamento Semanal",
+                labels={'data_transacao': 'Período', 'valor_total': 'Faturamento (R$)'},
+                color_discrete_sequence=['#00B4D8'] # Azul moderno
+            )
+            fig_evolucao.update_layout(hovermode="x unified")
+            st.plotly_chart(fig_evolucao, use_container_width=True)
         else:
-            st.info("Nenhuma venda registrada.")
+            st.info("Sem dados de vendas para gerar gráfico.")
 
-    # --- ABA AGENDA ---
-    with tab_ag:
-        st.subheader("📅 Agenda de Serviços")
-        df_ag = st.session_state['agendamentos']
+    with col_g2:
+        st.subheader("💳 Meios de Pagamento")
+        if not df_trans.empty:
+            pagamentos = df_trans['pagamento'].value_counts().reset_index()
+            pagamentos.columns = ['Meio', 'Qtd']
+            
+            fig_pizza = px.donut(
+                pagamentos, 
+                values='Qtd', 
+                names='Meio', 
+                hole=0.4,
+                color_discrete_sequence=px.colors.sequential.RdBu
+            )
+            fig_pizza.update_layout(showlegend=False)
+            st.plotly_chart(fig_pizza, use_container_width=True)
+        else:
+            st.info("Sem dados.")
+
+    # --- 5. GRÁFICOS SECUNDÁRIOS ---
+    col_g3, col_g4 = st.columns(2)
+
+    with col_g3:
+        st.subheader("💇‍♀️ Top Serviços")
         if not df_ag.empty:
-            df_show = df_ag.copy()
-            if 'data_agendamento' in df_show.columns:
-                df_show['Data'] = pd.to_datetime(df_show['data_agendamento']).dt.strftime('%d/%m/%Y')
+            # Agrupamento por serviço
+            top_serv = df_ag['Serviço'].value_counts().head(5).reset_index()
+            top_serv.columns = ['Serviço', 'Agendamentos']
             
-            cols_map = {'Data': 'Data', 'horario': 'Hora', 'Cliente': 'Cliente', 'Serviço': 'Serviço', 'Profissional': 'Profissional', 'status': 'Status'}
-            cols_final = [c for c in cols_map.keys() if c in df_show.columns or c == 'Data']
-            
-            df_final = df_show[cols_final].rename(columns=cols_map)
-            st.dataframe(df_final, use_container_width=True, hide_index=True)
+            fig_bar = px.bar(
+                top_serv, 
+                x='Agendamentos', 
+                y='Serviço', 
+                orientation='h',
+                text='Agendamentos',
+                color='Agendamentos',
+                color_continuous_scale='Bluyl'
+            )
+            fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_bar, use_container_width=True)
         else:
-            st.info("Nenhum agendamento.")
-            
-        # Métricas rápidas de agendamento
-        st.metric("Horários Marcados", len(st.session_state['agendamentos']))
+            st.info("Agenda vazia.")
 
-    # --- ABA EQUIPE ---
-    with tab_func:
-        st.subheader("👥 Nossa Equipe")
-        df_func = st.session_state['atendentes']
-        if not df_func.empty:
-             cols_func = [c for c in ['nome', 'observacao', 'valor', 'ativo'] if c in df_func.columns]
-             df_show_func = df_func[cols_func].copy()
-             rename_map = {'nome': 'Nome', 'observacao': 'Anotações', 'valor': 'Comissão/Valor', 'ativo': 'Ativo?'}
-             df_show_func = df_show_func.rename(columns=rename_map)
-             st.dataframe(df_show_func, use_container_width=True, hide_index=True)
-        else:
-             st.info("Ninguém cadastrado na equipe ainda.")
-
-    # --- ABA HORÁRIOS LIVRES ---
-    with tab_livre:
-        st.subheader("🆓 Consultar Horários Livres")
-        dia_sel = st.date_input("Escolha o dia", datetime.now(), format="DD/MM/YYYY")
-        
-        if dia_sel:
-            horarios_possiveis = [time(h, 0) for h in range(8, 19)]
+    with col_g4:
+        st.subheader("🏆 Ranking Equipe (Vendas)")
+        # Precisamos cruzar Agendamentos (que tem atendente) com preços ou usar dados manuais
+        # Vamos usar contagem de atendimentos concluídos por enquanto como proxy de performance
+        if not df_ag.empty:
+            rank = df_ag[df_ag['status'] == 'Concluído']['Profissional'].value_counts().reset_index()
+            rank.columns = ['Profissional', 'Atendimentos']
             
-            df_ag = st.session_state['agendamentos']
-            ocupados = []
-            if not df_ag.empty:
-                dia_str = dia_sel.strftime('%Y-%m-%d')
-                df_dia = df_ag[df_ag['data_agendamento'] == dia_str]
-                
-                for _, row in df_dia.iterrows():
-                    try:
-                        h_str = str(row['horario'])
-                        h_obj = datetime.strptime(h_str, '%H:%M:%S').time()
-                        ocupados.append(h_obj)
-                    except:
-                        pass
-            
-            livres = [h for h in horarios_possiveis if h not in ocupados]
-            
-            if livres:
-                st.success(f"Horários livres para {dia_sel.strftime('%d/%m/%Y')}:")
-                cols = st.columns(6)
-                for i, h in enumerate(livres):
-                    cols[i % 6].write(f"✅ {h.strftime('%H:%M')}")
+            if not rank.empty:
+                st.dataframe(
+                    rank,
+                    column_config={
+                        "Atendimentos": st.column_config.ProgressColumn(
+                            "Performance",
+                            format="%d",
+                            min_value=0,
+                            max_value=int(rank['Atendimentos'].max() * 1.2),
+                        ),
+                    },
+                    use_container_width=True,
+                    hide_index=True
+                )
             else:
-                st.warning("Não há horários livres neste dia!")
+                st.info("Nenhum atendimento concluído ainda.")
+        else:
+            st.info("Sem dados de equipe.")
+
+    st.divider()
+
+    # --- 6. TABELA DETALHADA COM BADGES E AVATARES ---
+    st.subheader("📑 Histórico Recente de Transações")
+    
+    if not df_trans.empty:
+        # Prepara a tabela para exibição (Merge com Clientes para mostrar nomes)
+        df_display = df_trans.copy()
+        
+        # Merge manual simples via Pandas
+        if not df_cli.empty:
+            df_display['id_cliente'] = df_display['id_cliente'].fillna(0).astype(int)
+            df_cli['id'] = df_cli['id'].astype(int)
+            
+            # Cria dicionário para mapear ID -> Nome
+            mapa_nomes = df_cli.set_index('id')['nome'].to_dict()
+            df_display['Cliente'] = df_display['id_cliente'].map(mapa_nomes).fillna("Consumidor Final")
+        else:
+            df_display['Cliente'] = "Consumidor Final"
+
+        # Seleciona e renomeia colunas
+        df_final = df_display[['data_transacao', 'Cliente', 'valor_total', 'pagamento', 'origem']].copy()
+        df_final = df_final.sort_values('data_transacao', ascending=False)
+        
+        # Configuração visual avançada (Column Config)
+        st.dataframe(
+            df_final,
+            column_config={
+                "data_transacao": st.column_config.DatetimeColumn(
+                    "Data/Hora",
+                    format="D MMM YYYY, HH:mm",
+                ),
+                "valor_total": st.column_config.NumberColumn(
+                    "Valor",
+                    format="R$ %.2f"
+                ),
+                "pagamento": st.column_config.TextColumn(
+                    "Pagamento",
+                    help="Método utilizado",
+                    validate="^(Pix|Dinheiro|Cartão|Boleto)$"
+                ),
+                "origem": st.column_config.SelectboxColumn(
+                    "Origem",
+                    options=["Balcão", "Agendamento"],
+                    width="small"
+                )
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+    else:
+        st.warning("Nenhuma transação registrada no sistema.")
