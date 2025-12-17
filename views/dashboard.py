@@ -99,7 +99,8 @@ def render_view():
                 y='Serviço', 
                 orientation='h',
                 text='Agendamentos',
-                color='Agendamentos'
+                color='Agendamentos',
+                color_continuous_scale='Blues_r'
             )
             fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig_bar, use_container_width=True)
@@ -109,12 +110,10 @@ def render_view():
     with col_g4:
         st.subheader("🏆 Ranking Equipe")
         if not df_ag.empty:
-            # Conta atendimentos concluídos por profissional
             rank = df_ag[df_ag['status'] == 'Concluído']['Profissional'].value_counts().reset_index()
             rank.columns = ['Profissional', 'Atendimentos']
             
             if not rank.empty:
-                # Tabela estilizada com barra de progresso
                 st.dataframe(
                     rank,
                     column_config={
